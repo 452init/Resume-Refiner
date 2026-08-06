@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "lint": "eslint .",
+    "test": "node --test",
+    "security:audit": "npm audit --audit-level=high",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "predeploy": "npm run lint && npm test && npm run security:audit && npm run build"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
@@ -16,5 +20,10 @@
     "react-dom": "^19.1.0",
     "lucide-react": "^0.468.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "eslint": "^9.32.0",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^16.3.0"
+  }
 }
