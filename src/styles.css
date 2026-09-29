@@ -481,6 +481,65 @@ select:focus {
   padding: 0 10px;
 }
 
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.bot-timeline {
+  display: grid;
+  gap: 9px;
+}
+
+.bot-timeline div {
+  align-items: flex-start;
+  background: #eef8f6;
+  border: 1px solid #c8e4de;
+  border-radius: 8px;
+  display: flex;
+  gap: 9px;
+  padding: 10px;
+}
+
+.bot-timeline svg {
+  color: #0d7f73;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.bot-timeline span {
+  display: grid;
+  gap: 2px;
+}
+
+.bot-timeline small {
+  color: #596865;
+  line-height: 1.35;
+}
+
+.job-extract {
+  background: #f8f7f2;
+  border: 1px solid #e2ddd1;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.job-extract summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.job-extract p {
+  color: #4e5a58;
+  line-height: 1.45;
+  margin: 10px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 pre {
   background: #fffdf8;
   line-height: 1.45;

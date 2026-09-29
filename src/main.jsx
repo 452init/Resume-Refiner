@@ -88,8 +88,10 @@ function App() {
   const [apiBody, setApiBody] = useState('{\n  "role": "AI Product Engineer",\n  "company": "Example Labs"\n}');
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
+  const [uploadStatus, setUploadStatus] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState(null);
+  const [jobDescription, setJobDescription] = useState('');
   const fileInputRef = useRef(null);
 
   const jobSignal = useMemo(() => {
@@ -98,10 +100,11 @@ function App() {
     return `${apiMethod} ${apiUrl} ${apiBody}`;
   }, [activeTab, apiBody, apiMethod, apiUrl, jobLink, jobText]);
 
-  const canAnalyze = resumeFile && jobSignal.trim().length > 12 && !isRunning;
+  const canAnalyze = resumeFile && resumeText.trim().length > 80 && jobSignal.trim().length > 12 && !isRunning;
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     setError('');
+    setUploadStatus('');
     if (!file) return;
     if (!isPdfFile(file)) {
       setResumeFile(null);
@@ -109,25 +112,77 @@ function App() {
       return;
     }
     setResumeFile(file);
+    setUploadStatus('Extracting text from PDF...');
+    try {
+      const { extractPdfText } = await import('./pdf.js');
+      const extractedText = await extractPdfText(file);
+      if (extractedText.length < 80) {
+        setError('The PDF was uploaded, but very little text could be extracted. You can paste or correct the resume text below.');
+      } else {
+        setResumeText(extractedText);
+      }
+      setUploadStatus(`${formatBytes(file.size)} ready`);
+    } catch {
+      setUploadStatus(`${formatBytes(file.size)} uploaded`);
+      setError('The PDF was uploaded, but text extraction failed. Paste the resume text below before refining.');
+    }
   };
 
-  const runAnalysis = () => {
+  const runAnalysis = async () => {
     if (!canAnalyze) return;
     setIsRunning(true);
     setResult(null);
-    window.setTimeout(() => {
-      setResult(buildRefinement({
-        sourceType: activeTab,
-        resumeName: resumeFile.name,
-        jobSignal,
-        resumeText
-      }));
+    setJobDescription('');
+
+    try {
+      if (activeTab === 'link' || activeTab === 'text') {
+        const response = await fetch('/api/refine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            resumeName: resumeFile.name,
+            resumeText,
+            jobUrl: activeTab === 'link' ? jobLink : '',
+            jobText: activeTab === 'text' ? jobText : ''
+          })
+        });
+        const data = await readApiResponse(response);
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to refine the resume.');
+        }
+        setResult(data);
+        setJobDescription(data.jobDescription || '');
+      } else {
+        setResult(buildRefinement({
+          sourceType: activeTab,
+          resumeName: resumeFile.name,
+          jobSignal,
+          resumeText
+        }));
+      }
+    } catch (runError) {
+      setError(runError.message);
+    } finally {
       setIsRunning(false);
-    }, 1400);
+    }
   };
+
+  async function readApiResponse(response) {
+    const body = await response.text();
+    if (!body.trim()) {
+      throw new Error(`The refinement API returned an empty response (HTTP ${response.status}). Start the Vercel API locally with \`vercel dev\`, or check the deployment logs.`);
+    }
+
+    try {
+      return JSON.parse(body);
+    } catch {
+      throw new Error(`The refinement API returned an invalid response (HTTP ${response.status}). Start the Vercel API locally with \`vercel dev\`, or check the deployment logs.`);
+    }
+  }
 
   const resetFlow = () => {
     setResult(null);
+    setJobDescription('');
     setError('');
   };
 
@@ -140,6 +195,18 @@ function App() {
     anchor.download = 'refined-resume.md';
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadPdf = async () => {
+    if (!result) return;
+    const { downloadResumePdf } = await import('./exporters.js');
+    downloadResumePdf(result.refinedResume);
+  };
+
+  const downloadDocx = async () => {
+    if (!result) return;
+    const { downloadResumeDocx } = await import('./exporters.js');
+    await downloadResumeDocx(result.refinedResume);
   };
 
   return (
@@ -182,14 +249,16 @@ function App() {
           >
             <UploadCloud size={34} />
             <span>{resumeFile ? resumeFile.name : 'Drop PDF resume here'}</span>
-            <small>{resumeFile ? `${formatBytes(resumeFile.size)} ready` : 'or click to select from desktop'}</small>
+            <small>{resumeFile ? uploadStatus || `${formatBytes(resumeFile.size)} ready` : 'or click to select from desktop'}</small>
           </button>
           <input
             ref={fileInputRef}
             className="hidden-input"
             type="file"
             accept="application/pdf,.pdf"
-            onChange={(event) => handleFile(event.target.files?.[0])}
+            onChange={(event) => {
+              void handleFile(event.target.files?.[0]);
+            }}
           />
           {error && (
             <div className="error">
@@ -248,7 +317,7 @@ function App() {
                   onChange={(event) => setJobLink(event.target.value)}
                 />
               </div>
-              <p className="hint">The production service will crawl the job page, company site, culture pages, and relevant public hiring context.</p>
+              <p className="hint">The Vercel API fetches the page, strips noise, blocks private network URLs, then sends it through the editor and reviewer bots.</p>
             </div>
           )}
 
@@ -329,7 +398,7 @@ function App() {
             <div className="progress-state">
               <Loader2 className="spin" size={34} />
               <h3>Reading the role deeply</h3>
-              <p>Extracting requirements, culture signals, keywords, and truthful resume improvements.</p>
+              <p>Fetching the job source, editing the resume, and passing the draft through the reviewer bot.</p>
             </div>
           )}
 
@@ -345,17 +414,51 @@ function App() {
                 </div>
               </div>
 
+              <p className="hint">{result.aiProvider ? `${result.aiProvider} editor and reviewer completed this pass.` : 'Local editor and reviewer completed this pass.'}</p>
+
               <InsightList title="Hiring signals" icon={BadgeCheck} items={result.signals} />
               <InsightList title="Missing or weak areas" icon={AlertCircle} items={result.gaps} warning />
               <InsightList title="Rewrite plan" icon={RefreshCw} items={result.plan} />
+              <InsightList title="Reviewer bot checks" icon={ShieldCheck} items={result.reviewer?.checks || []} />
+
+              {result.bots && (
+                <div className="bot-timeline">
+                  {result.bots.map((bot) => (
+                    <div key={bot.name}>
+                      <Check size={16} />
+                      <span>
+                        <strong>{bot.name}</strong>
+                        <small>{bot.detail}</small>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {jobDescription && (
+                <details className="job-extract">
+                  <summary>Extracted job description</summary>
+                  <p>{jobDescription}</p>
+                </details>
+              )}
 
               <div className="resume-preview">
                 <div className="preview-head">
                   <h3>Refined resume draft</h3>
-                  <button type="button" onClick={downloadMarkdown}>
-                    <Download size={16} />
-                    Markdown
-                  </button>
+                  <div className="download-actions">
+                    <button type="button" onClick={() => void downloadPdf()}>
+                      <Download size={16} />
+                      PDF
+                    </button>
+                    <button type="button" onClick={() => void downloadDocx()}>
+                      <Download size={16} />
+                      DOCX
+                    </button>
+                    <button type="button" onClick={downloadMarkdown}>
+                      <Download size={16} />
+                      MD
+                    </button>
+                  </div>
                 </div>
                 <pre>{result.refinedResume}</pre>
               </div>

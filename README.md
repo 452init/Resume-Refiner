@@ -1,6 +1,6 @@
 # Resume Refiner
 
-An AI-powered resume tailoring workspace built with Vite and React. Upload a PDF resume, provide a job source, and receive a truth-preserving refinement — complete with match scoring, gap analysis, a rewrite plan, and downloadable Markdown output.
+An AI-powered resume tailoring workspace built with Vite, React, and a Vercel serverless API. Upload a PDF resume, provide a job description link, and the app extracts the resume text, fetches the job page, runs an editor bot, runs a reviewer bot, and produces a truth-preserving resume draft downloadable as PDF, DOCX, or Markdown.
 
 ![Resume Refiner UI](https://img.shields.io/badge/status-MVP-blue) ![Vite 7](https://img.shields.io/badge/vite-7-646CFF?logo=vite&logoColor=white) ![React 19](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=white)
 
@@ -11,13 +11,14 @@ An AI-powered resume tailoring workspace built with Vite and React. Upload a PDF
 ### Resume Upload & Validation
 - Drag-and-drop or click-to-select PDF upload zone
 - Client-side validation by MIME type (`application/pdf`) and file extension (`.pdf`)
+- Browser-based PDF text extraction
 - Real-time file size display with human-readable formatting (B / KB / MB)
 - Editable extracted resume text area for reviewing and correcting parsed content
 
 ### Job Source Input (3 Modes)
 | Mode | Description |
 |------|-------------|
-| **Job Link** | Paste a public career page URL — the production service will crawl the job page, company site, and culture pages |
+| **Job Link** | Paste a public career page URL — `/api/refine` fetches, cleans, and analyzes the page |
 | **Paste JD** | Paste the full job description, requirements, and preferred qualifications directly |
 | **API** | Configure a developer API feed (method, endpoint, JSON body) for programmatic job ingestion (e.g. Greenhouse, Lever) |
 
@@ -36,7 +37,9 @@ The interface displays four supported AI provider options for the refinement eng
 - **Hiring signals** — Key strengths detected from the resume that align with the job
 - **Missing or weak areas** — Gaps flagged with actionable improvement notes (never fabricated)
 - **Rewrite plan** — Step-by-step strategy for refining the resume truthfully
-- **Refined resume draft** — Full rewritten resume available as a scrollable preview and downloadable `.md` file
+- **Bot timeline** — Shows job research, resume editing, and reviewer bot status
+- **Reviewer checks** — Estimates requirement coverage and flags fabrication risk
+- **Refined resume draft** — Full rewritten resume available as PDF, DOCX, or Markdown
 
 ### Truth-Preserving Philosophy
 The core design principle is **no fabrication**. The refinement engine:
@@ -54,6 +57,9 @@ The core design principle is **no fabrication**. The refinement engine:
 | Framework | [Vite 7](https://vite.dev/) + [React 19](https://react.dev/) |
 | Language | JavaScript (JSX) |
 | Icons | [Lucide React](https://lucide.dev/) |
+| PDF extraction | `pdfjs-dist` |
+| Resume export | `docx` + `jspdf` |
+| Serverless API | Vercel `/api/refine` |
 | Styling | Vanilla CSS with custom design tokens |
 | Linting | ESLint 9 with flat config + eslint-plugin-react |
 | Testing | Node.js built-in test runner (`node --test`) |
@@ -68,11 +74,16 @@ Resume-Refiner/
 ├── index.html              # HTML entry point with #root mount
 ├── vite.config.js          # Vite config with React plugin
 ├── package.json            # Scripts, dependencies, metadata
+├── api/
+│   └── refine.js           # Secure job-link ingestion + bot workflow endpoint
 ├── vercel.json             # Vercel deployment config + security headers
 ├── eslint.config.js        # ESLint flat config for JS/JSX
 ├── .env.example            # Environment variable template (future backend)
+├── .env.example            # Server-side AI environment variable template
 ├── src/
 │   ├── main.jsx            # App component, UI layout, all React logic
+│   ├── exporters.js        # PDF, DOCX, and Markdown download helpers
+│   ├── pdf.js              # Browser PDF text extraction helper
 │   ├── refinement.js       # Refinement engine, PDF validation, byte formatting
 │   └── styles.css          # Full design system (responsive, light theme)
 └── test/
@@ -87,11 +98,12 @@ Resume-Refiner/
 # Install dependencies
 npm ci
 
-# Start the dev server (accessible on LAN)
+# Start the local app, including the /api/refine endpoint
 npm run dev
 ```
 
 The dev server runs at `http://localhost:5173` (or the next available port) with hot module replacement.
+The Vite development server also mounts `/api/refine` locally, so job-link testing works with the same command. Configure the AI variables from `.env.example` in a local `.env` file when using the hosted AI workflow.
 
 ---
 
@@ -119,6 +131,7 @@ The test suite covers:
 - **PDF validation** — Accepts `.pdf` files by MIME type or extension, rejects `.docx` and null inputs
 - **Byte formatting** — Verifies human-readable file size output (`0 KB`, `512 B`, `2.0 KB`)
 - **Refinement engine** — Validates scoring, signal detection, gap analysis, and truth-preservation for AI/API-heavy job descriptions
+- **Two-bot workflow** — Confirms editor and reviewer bot outputs are produced
 
 ---
 
@@ -143,6 +156,15 @@ The `vercel.json` is pre-configured with:
 | Build command | `npm run predeploy` (runs lint, tests, audit, then build) |
 | Output directory | `dist` |
 
+The deployment also includes `/api/refine`, a Vercel serverless function that:
+
+- accepts resume text and a job URL or pasted job text
+- rejects non-HTTP protocols and URLs with embedded credentials
+- blocks localhost and private network addresses
+- applies a fetch timeout and page-size limit
+- removes scripts, styles, navigation, footer HTML, and tags before analysis
+- returns the edited resume, reviewer checks, bot timeline, extracted requirements, and job-description excerpt
+
 ### Security Headers
 
 All responses include production security headers:
@@ -159,23 +181,31 @@ All responses include production security headers:
 
 ### Environment Variables
 
-This is currently a **frontend-only MVP** — no environment variables are required for deployment.
+Without an AI key, the app uses its deterministic truth-preserving editor and reviewer so local development still works. To enable the two-pass hosted AI workflow, configure one of these server-side variables on Vercel:
 
-When a backend API layer is added, the following keys should be configured as **server-side environment variables** on Vercel (never prefixed with `VITE_`):
+The following keys can be configured as **server-side environment variables** on Vercel (never prefixed with `VITE_`):
 
 | Variable | Purpose |
 |----------|---------|
 | `MISTRAL_API_KEY` | Mistral AI provider authentication |
 | `GROQ_API_KEY` | Groq AI provider authentication |
 | `HUGGINGFACE_API_KEY` | Hugging Face Inference API authentication |
+| `OPENAI_API_KEY` | OpenAI-compatible provider authentication |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible chat completions URL |
+| `OPENAI_MODEL` | Optional OpenAI-compatible model name |
+| `MISTRAL_MODEL` | Optional Mistral model name |
+| `GROQ_MODEL` | Optional Groq model name |
+
+When configured, the server runs the Job Research Bot, an AI Resume Editor Bot, and a separate Quality Review Bot in sequence. The reviewer checks requirement coverage and unsupported claims before the result is returned. API keys are never sent to the browser.
 
 ---
 
 ## Security Notes
 
-- PDF files are validated client-side by MIME type and extension in this frontend MVP
+- PDF files are validated client-side by MIME type and extension before extraction
+- Job links are fetched server-side with protocol validation, DNS checks, private-network blocking, timeout protection, and size limits
 - No API keys are bundled into client code
-- Future AI provider keys should live only in server-side functions or backend services
+- AI provider keys live only in the server-side API function and are never bundled into client code
 - The AI rewrite flow is designed to preserve truth and flag missing requirements instead of fabricating experience
 
 ---

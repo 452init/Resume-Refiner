@@ -8,7 +8,7 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['src/**/*.js', 'src/**/*.jsx', 'test/**/*.js'],
+    files: ['api/**/*.js', 'src/**/*.js', 'src/**/*.jsx', 'test/**/*.js'],
     plugins: {
       react
     },
@@ -16,7 +16,14 @@ export default [
       ecmaVersion: 'latest',
       globals: {
         ...globals.browser,
-        ...globals.node
+        ...globals.node,
+        AbortController: 'readonly',
+        Buffer: 'readonly',
+        TextDecoder: 'readonly',
+        URL: 'readonly',
+        clearTimeout: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly'
       },
       parserOptions: {
         ecmaFeatures: {
