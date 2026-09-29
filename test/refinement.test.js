@@ -48,6 +48,27 @@ test('builds a higher-signal refinement for AI API roles without fabricating cla
   assert.ok(result.gaps.some((gap) => gap.includes('Add metrics')));
 });
 
+test('builds a structured fallback from noisy PDF extraction', () => {
+  const result = buildRefinement({
+    sourceType: 'link',
+    resumeName: 'clinton.pdf',
+    jobSignal: 'Python backend engineer with APIs, cloud, and databases',
+    resumeText: `CLINTON OKOTH Nairobi, Kenya | clinsmol10@gmail.com
+Results-driven Full-Stack Software Engineer with 3 years of experience building scalable applications.
+SMILES AFRICA Tutor - Introduction to Programming Provided technical training and documentation.
+African Leadership Experience - Certificate in Software Engineering
+ProgrammingLanguages: Python, Typescript, React, PostgreSQL, Docker, Git`
+  });
+
+  assert.match(result.refinedResume, /^CLINTON OKOTH/);
+  assert.match(result.refinedResume, /PROFESSIONAL SUMMARY/);
+  assert.match(result.refinedResume, /EXPERIENCE/);
+  assert.match(result.refinedResume, /EDUCATION/);
+  assert.match(result.refinedResume, /SKILLS/);
+  assert.doesNotMatch(result.refinedResume, /TARGETED REFINEMENT|ROLE REQUIREMENT|Uploaded file|Job URL/);
+  assert.ok(result.refinedResume.split('\n').length < 20);
+});
+
 test('extracts role requirements and returns editor and reviewer bot outputs', () => {
   const jobText = `
     We require experience with React, API integrations, AWS cloud deployments, and product stakeholders.

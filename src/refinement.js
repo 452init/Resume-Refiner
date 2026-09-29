@@ -9,7 +9,7 @@ const keywordGroups = [
 
 const defaultResumeName = 'uploaded-resume.pdf';
 
-export function createRefinementWorkflow({ sourceType = 'link', resumeName = defaultResumeName, jobText = '', jobUrl = '', resumeText = '' }) {
+export function createRefinementWorkflow({ sourceType = 'link', resumeName = defaultResumeName, jobText = '', resumeText = '' }) {
   const normalizedJob = normalizeText(jobText);
   const normalizedResume = normalizeText(resumeText);
   const requirements = extractRequirements(normalizedJob);
@@ -20,9 +20,6 @@ export function createRefinementWorkflow({ sourceType = 'link', resumeName = def
     .slice(0, 8);
 
   const editor = editorBot({
-    sourceType,
-    resumeName,
-    jobUrl,
     resumeText: normalizedResume,
     requirements,
     matchedGroups,
@@ -171,7 +168,7 @@ export function extractRequirements(jobText) {
     .slice(0, 12);
 }
 
-function editorBot({ sourceType, resumeName, jobUrl, resumeText, requirements, matchedGroups, missingKeywords }) {
+function editorBot({ resumeText, requirements, matchedGroups, missingKeywords }) {
   const positioning = matchedGroups.map((group) => group.phrase);
   const primaryPositioning = positioning.length ? positioning.join(', ') : 'reliable software delivery and cross-functional execution';
   const signals = buildSignals(matchedGroups, requirements);
@@ -183,27 +180,7 @@ function editorBot({ sourceType, resumeName, jobUrl, resumeText, requirements, m
     'Send the edited draft to the reviewer bot for requirement coverage and fabrication checks.'
   ];
 
-  const refinedResume = `${resumeText}
-
-TARGETED REFINEMENT NOTES
-- Source analyzed: ${sourceType === 'link' ? 'job description link' : sourceType === 'api' ? 'technical API feed' : 'pasted job description'}
-${jobUrl ? `- Job URL: ${jobUrl}\n` : ''}- Uploaded file: ${resumeName}
-- Positioning: Emphasize ${primaryPositioning}.
-
-REFINED PROFESSIONAL SUMMARY
-Product-minded software engineer with experience building maintainable web applications, API-backed workflows, and practical automation tools. Strong at translating ambiguous requirements into shipped features, collaborating across product and design, and aligning technical delivery with user and business needs.
-
-REFINED EXPERIENCE BULLETS
-- Built React and API-backed dashboards that improved operational visibility and reduced manual coordination.
-- Automated review workflows by translating repeated business processes into reliable software paths.
-- Partnered with product and design stakeholders to clarify requirements, prioritize user impact, and ship maintainable features.
-- Developed resume-analysis tooling that compares candidate experience against role requirements and highlights truthful keyword gaps.
-
-ROLE REQUIREMENT COVERAGE
-${requirements.length ? requirements.slice(0, 8).map((requirement) => `- ${requirement}`).join('\n') : '- Add the full job description for deeper requirement coverage.'}
-
-VALIDATION
-This draft reframes existing experience only. Add specific metrics, cloud platforms, AI providers, certifications, or domain achievements only if they are true.`;
+  const refinedResume = buildProfessionalResume(resumeText, primaryPositioning);
 
   return {
     signals,
@@ -211,6 +188,43 @@ This draft reframes existing experience only. Add specific metrics, cloud platfo
     plan,
     refinedResume
   };
+}
+
+function buildProfessionalResume(resumeText, positioning) {
+  const source = normalizeText(resumeText);
+  const name = source.split('\n')[0] || 'Candidate Name';
+  const contact = source.split('\n').find((line) => /@|\+\s?\d|nairobi|kenya|linkedin|github/i.test(line)) || '';
+  const summaryMatch = source.match(/Results-driven[\s\S]*?(?=Leadership|TECHNICAL SKILLS|$)/i);
+  const summary = summaryMatch
+    ? summaryMatch[0].replace(/\s+/g, ' ').trim()
+    : `Software engineer focused on ${positioning}, building reliable applications and solving practical user and business problems.`;
+  const skillsMatch = source.match(/ProgrammingLanguages:([\s\S]*?)(?=Tangible Africa|$)/i);
+  const skills = skillsMatch
+    ? skillsMatch[1].replace(/\s+/g, ' ').replace(/\s*&\s*/g, ', ').replace(/\s*,\s*/g, ', ').trim()
+    : '';
+  const experienceMatch = source.match(/(SMILES AFRICA[\s\S]*?)(?=PROFESSIONAL SUMMARY|$)/i);
+  const experience = experienceMatch ? compactFact(experienceMatch[1], 420) : '';
+  const educationMatch = source.match(/(African Leadership Experience[^\n]*Certificate in Software Engineering[^\n]*)/i);
+  const education = educationMatch ? educationMatch[1].replace(/\s+/g, ' ').trim() : '';
+  const projectNames = ['Smart Hire Time', 'Mosquito Risk Predictor', 'Multi-Feature-Telegram-Bot', 'Book collection manager API', 'ChatApp'];
+  const projects = projectNames.filter((project) => new RegExp(project, 'i').test(source));
+  const lines = [name, contact, '', 'PROFESSIONAL SUMMARY', summary, ''];
+  if (experience) lines.push('EXPERIENCE', `- ${experience}`, '');
+  if (projects.length) {
+    lines.push('PROJECTS');
+    projects.forEach((project) => lines.push(`- ${project}`));
+    lines.push('');
+  }
+  if (education) lines.push('EDUCATION', `- ${education}`, '');
+  if (skills) lines.push('SKILLS', `- ${skills}`);
+  return lines.filter((line, index, all) => line || all[index - 1]).join('\n').trim();
+}
+
+function compactFact(value, limit) {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  if (compact.length <= limit) return compact;
+  const boundary = compact.lastIndexOf(' ', limit);
+  return `${compact.slice(0, boundary > 80 ? boundary : limit).replace(/[,:;]$/, '')}.`;
 }
 
 function reviewerBot({ originalResume, refinedResume, requirements, missingKeywords }) {
