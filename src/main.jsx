@@ -23,6 +23,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { buildRefinement, formatBytes, isPdfFile } from './refinement.js';
+import { downloadResumeDocx, downloadResumePdf } from './exporters.js';
 import './styles.css';
 
 const tabs = [
@@ -193,19 +194,20 @@ function App() {
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const downloadPdf = async (text = result?.refinedResume, filename = 'refined-resume') => {
     if (!text) return;
-    const { downloadResumePdf } = await import('./exporters.js');
     downloadResumePdf(text, filename);
   };
 
   const downloadDocx = async (text = result?.refinedResume, filename = 'refined-resume') => {
     if (!text) return;
-    const { downloadResumeDocx } = await import('./exporters.js');
     await downloadResumeDocx(text, filename);
   };
 
