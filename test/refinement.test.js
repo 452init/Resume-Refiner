@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildRefinement, createRefinementWorkflow, extractRequirements, formatBytes, isPdfFile } from '../src/refinement.js';
+import { buildRefinement, createRefinementWorkflow, extractRequirements, formatBytes, formatResumeText, isPdfFile } from '../src/refinement.js';
 
 test('accepts PDF files by MIME type or extension only', () => {
   assert.equal(isPdfFile({ name: 'resume.pdf', type: 'application/pdf' }), true);
@@ -15,6 +15,24 @@ test('formats byte counts for upload feedback', () => {
   assert.equal(formatBytes(2048), '2.0 KB');
 });
 
+test('produces clean resume text without internal bot notes', () => {
+  const formatted = formatResumeText(`JANE DOE
+
+TARGETED REFINEMENT NOTES
+- Source analyzed: job description link
+
+REFINED PROFESSIONAL SUMMARY
+Product engineer with platform experience.
+
+REFINED EXPERIENCE BULLETS
+* Built reliable workflows.
+
+VALIDATION
+Do not invent claims.`);
+
+  assert.equal(formatted, 'JANE DOE\nPROFESSIONAL SUMMARY\nProduct engineer with platform experience.\nEXPERIENCE\n- Built reliable workflows.');
+});
+
 test('builds a higher-signal refinement for AI API roles without fabricating claims', () => {
   const result = buildRefinement({
     sourceType: 'api',
@@ -24,8 +42,8 @@ test('builds a higher-signal refinement for AI API roles without fabricating cla
   });
 
   assert.ok(result.score >= 80);
-  assert.match(result.refinedResume, /Uploaded file: candidate\.pdf/);
-  assert.match(result.refinedResume, /This draft reframes existing experience only/);
+  assert.match(result.refinedResume, /PROFESSIONAL SUMMARY/);
+  assert.doesNotMatch(result.refinedResume, /TARGETED REFINEMENT NOTES/);
   assert.ok(result.signals.some((signal) => signal.includes('API and backend')));
   assert.ok(result.gaps.some((gap) => gap.includes('Add metrics')));
 });
@@ -50,6 +68,6 @@ test('extracts role requirements and returns editor and reviewer bot outputs', (
   assert.equal(result.variations.length, 3);
   assert.equal(result.selectedVariation, 'primary');
   assert.equal(result.reviewer.passed, true);
-  assert.match(result.refinedResume, /Job URL: https:\/\/example\.com\/job/);
+  assert.doesNotMatch(result.refinedResume, /Job URL:/);
   assert.ok(result.reviewer.checks.some((check) => check.includes('Requirement coverage estimate')));
 });

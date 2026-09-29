@@ -40,6 +40,7 @@ The interface displays four supported AI provider options for the refinement eng
 - **Four-agent workflow** — A requirements analyst extracts key points, an editor tailors the resume, a formatting reviewer checks ATS-friendly structure, and a variations agent creates and compares alternate versions
 - **Reviewer checks** — Shows formatting checks and preserves the strongest reviewed version as the primary resume
 - **Resume versions** — The reviewed primary resume plus at least two alternate versions are available for PDF and DOCX download
+- **Production formatting** — Internal agent notes and metadata are removed, sections and bullets are normalized, and exports use professional hierarchy, spacing, typography, and ATS-safe plain text
 
 ### Truth-Preserving Philosophy
 The core design principle is **no fabrication**. The refinement engine:

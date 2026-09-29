@@ -1,6 +1,6 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
-import { createRefinementWorkflow, normalizeText } from '../src/refinement.js';
+import { createRefinementWorkflow, formatResumeText, normalizeText } from '../src/refinement.js';
 
 const maxBodySize = 150_000;
 const maxFetchedBytes = 1_200_000;
@@ -61,16 +61,17 @@ async function runAiWorkflow({ sourceType, resumeName, jobText, resumeText }) {
     prompt: `Job description:\n${jobText}`
   });
   const editor = await callAiBot({
-    system: `You are the Resume Editor Bot. Use the requirements analyst brief to tailor the resume. Preserve employers, titles, dates, tools, education, and achievements unless they already appear in the original resume. You may reorder, clarify, and rewrite wording, but unsupported requirements must be listed as gaps. Return only valid JSON with keys: refinedResume (string), signals (string[]), gaps (string[]), plan (string[]).`,
+    system: `You are the Resume Editor Bot and a senior professional resume writer. Use the requirements analyst brief to tailor the resume. Produce a complete, submission-ready resume, not commentary or a plan. Preserve employers, titles, dates, tools, education, and achievements unless they already appear in the original resume. You may reorder, clarify, and rewrite wording, but never invent facts, metrics, credentials, or experience. Use this exact plain-text structure where the source supports it: candidate name, contact line, PROFESSIONAL SUMMARY, EXPERIENCE, PROJECTS, EDUCATION, CERTIFICATIONS, and SKILLS. Use concise achievement bullets beginning with '- ', consistent tense, strong verbs, and ATS-readable section headings. Remove internal notes, role coverage lists, disclaimers, and meta commentary from the resume. Return only valid JSON with keys: refinedResume (string), signals (string[]), gaps (string[]), plan (string[]).`,
     prompt: `Original resume:\n${resumeText}\n\nJob description:\n${jobText}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}`
   });
+  const editorDraft = formatResumeText(editor.refinedResume);
   const formattingReview = await callAiBot({
-    system: `You are the Resume Formatting Review Bot. Check the edited resume against the analyst's formatting expectations and professional resume standards: hierarchy, headings, bullets, consistency, scanability, length, and ATS-friendly plain text. Do not add candidate facts. Return only valid JSON with keys: passed (boolean), summary (string), checks (string[]), formattedResume (string). formattedResume must contain the same factual content with formatting fixes only.`,
-    prompt: `Original resume:\n${resumeText}\n\nEdited resume:\n${editor.refinedResume}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}`
+    system: `You are the Resume Formatting Review Bot and a meticulous ATS resume production specialist. Review the edited resume for professional hierarchy, readable whitespace, section order, bullet consistency, tense consistency, line length, scanability, and ATS-safe plain text. Return a complete corrected resume in formattedResume, not just advice. Do not add, remove, or change candidate facts. Remove all internal bot notes, requirement coverage sections, variation notes, disclaimers, and meta commentary. Keep the resume to approximately two pages of focused content, use a clear name/contact header, standard uppercase section headings, and concise '-' bullets. Return only valid JSON with keys: passed (boolean), summary (string), checks (string[]), formattedResume (string).`,
+    prompt: `Original resume:\n${resumeText}\n\nEdited resume:\n${editorDraft}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}`
   });
   const variationsReview = await callAiBot({
     system: `You are the Resume Variations and Selection Bot. Using the formatted primary resume and the analyst brief, create at least two genuinely different variations of the same resume: one optimized for impact and one optimized for ATS/skills scanning. Never invent facts. Compare the formatted primary and both variations, then select the strongest version as selectedResume. The selected version must already reflect the analyst brief and formatting review. Return only valid JSON with keys: variations (array of objects with id, name, resume, reason), selectedResume (string), selectedVariation (string), selectionReason (string). Include at least two variation objects; do not omit the primary from your comparison.`,
-    prompt: `Original resume:\n${resumeText}\n\nFormatted primary resume:\n${formattingReview.formattedResume || editor.refinedResume}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}\n\nFormatting review:\n${JSON.stringify(formattingReview)}`
+    prompt: `Original resume:\n${resumeText}\n\nFormatted primary resume:\n${formatResumeText(formattingReview.formattedResume || editorDraft)}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}\n\nFormatting review:\n${JSON.stringify(formattingReview)}`
   });
 
   const requirements = cleanStringArray(analyst.requirements).length ? cleanStringArray(analyst.requirements) : extractRequirementsForAi(jobText);
@@ -79,10 +80,10 @@ async function runAiWorkflow({ sourceType, resumeName, jobText, resumeText }) {
   const variations = Array.isArray(variationsReview.variations) ? variationsReview.variations.map((variation) => ({
     id: String(variation.id || 'variation'),
     name: String(variation.name || 'Resume variation'),
-    resume: String(variation.resume || '').trim(),
+    resume: formatResumeText(String(variation.resume || '')),
     reason: String(variation.reason || 'Alternative positioning of the same verified experience.')
   })).filter((variation) => variation.resume).slice(0, 4) : [];
-  const selectedResume = String(variationsReview.selectedResume || formattingReview.formattedResume || editor.refinedResume).trim();
+  const selectedResume = formatResumeText(String(variationsReview.selectedResume || formattingReview.formattedResume || editor.refinedResume));
   const formatting = {
     passed: Boolean(formattingReview.passed),
     summary: String(formattingReview.summary || 'Formatting review completed.'),

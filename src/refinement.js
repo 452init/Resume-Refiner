@@ -38,8 +38,9 @@ export function createRefinementWorkflow({ sourceType = 'link', resumeName = def
     missingKeywords
   });
 
-  const formattingReview = formattingBot(editor.refinedResume);
-  const variations = variationBot(editor.refinedResume, resumeName);
+  const formattedResume = formatResumeText(editor.refinedResume);
+  const formattingReview = formattingBot(formattedResume);
+  const variations = variationBot(formattedResume, resumeName);
 
   const score = calculateScore({ matchedGroups, matchedKeywords, missingKeywords, reviewer });
 
@@ -48,7 +49,7 @@ export function createRefinementWorkflow({ sourceType = 'link', resumeName = def
     signals: editor.signals,
     gaps: editor.gaps,
     plan: editor.plan,
-    refinedResume: editor.refinedResume,
+    refinedResume: formattedResume,
     reviewer,
     keyPoints,
     formattingReview,
@@ -110,6 +111,38 @@ export function normalizeText(value) {
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+export function formatResumeText(value) {
+  const lines = normalizeText(value)
+    .replace(/^```(?:text|markdown)?\s*/i, '')
+    .replace(/```$/i, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const output = [];
+  let internalSection = false;
+
+  for (const line of lines) {
+    if (/^REFINED PROFESSIONAL SUMMARY\b/i.test(line)) {
+      internalSection = false;
+      output.push('PROFESSIONAL SUMMARY');
+      continue;
+    }
+    if (/^REFINED EXPERIENCE BULLETS\b/i.test(line)) {
+      internalSection = false;
+      output.push('EXPERIENCE');
+      continue;
+    }
+    if (/^(TARGETED REFINEMENT NOTES|ROLE REQUIREMENT COVERAGE|VALIDATION|VARIATION NOTE)\b/i.test(line)) {
+      internalSection = true;
+      continue;
+    }
+    if (internalSection) continue;
+    output.push(line.replace(/^[•*]\s*/, '- ').replace(/^\s*[-–—]\s*/, '- '));
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 export function extractRequirements(jobText) {
