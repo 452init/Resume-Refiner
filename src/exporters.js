@@ -5,7 +5,7 @@ export function downloadTextFile(text, filename, type) {
   saveBlob(new Blob([text], { type }), filename);
 }
 
-export function downloadResumePdf(text) {
+export function downloadResumePdf(text, filename = 'refined-resume') {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const margin = 48;
   const lineHeight = 15;
@@ -28,10 +28,10 @@ export function downloadResumePdf(text) {
     });
   });
 
-  doc.save('refined-resume.pdf');
+  doc.save(`${filename}.pdf`);
 }
 
-export async function downloadResumeDocx(text) {
+export async function downloadResumeDocx(text, filename = 'refined-resume') {
   const children = text.split('\n').map((line) => {
     const isHeading = line && line === line.toUpperCase() && /[A-Z]/.test(line);
     return new Paragraph({
@@ -56,7 +56,7 @@ export async function downloadResumeDocx(text) {
   });
 
   const blob = await Packer.toBlob(document);
-  saveBlob(blob, 'refined-resume.docx');
+  saveBlob(blob, `${filename}.docx`);
 }
 
 function saveBlob(blob, filename) {

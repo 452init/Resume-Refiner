@@ -186,27 +186,27 @@ function App() {
     setError('');
   };
 
-  const downloadMarkdown = () => {
-    if (!result) return;
-    const blob = new Blob([result.refinedResume], { type: 'text/markdown;charset=utf-8' });
+  const downloadMarkdown = (text = result?.refinedResume, filename = 'refined-resume.md') => {
+    if (!text) return;
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'refined-resume.md';
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
   };
 
-  const downloadPdf = async () => {
-    if (!result) return;
+  const downloadPdf = async (text = result?.refinedResume, filename = 'refined-resume') => {
+    if (!text) return;
     const { downloadResumePdf } = await import('./exporters.js');
-    downloadResumePdf(result.refinedResume);
+    downloadResumePdf(text, filename);
   };
 
-  const downloadDocx = async () => {
-    if (!result) return;
+  const downloadDocx = async (text = result?.refinedResume, filename = 'refined-resume') => {
+    if (!text) return;
     const { downloadResumeDocx } = await import('./exporters.js');
-    await downloadResumeDocx(result.refinedResume);
+    await downloadResumeDocx(text, filename);
   };
 
   return (
@@ -416,10 +416,11 @@ function App() {
 
               <p className="hint">{result.aiProvider ? `${result.aiProvider} editor and reviewer completed this pass.` : 'Local editor and reviewer completed this pass.'}</p>
 
+              <InsightList title="Requirements key points" icon={ClipboardList} items={result.keyPoints || result.requirements || []} />
               <InsightList title="Hiring signals" icon={BadgeCheck} items={result.signals} />
               <InsightList title="Missing or weak areas" icon={AlertCircle} items={result.gaps} warning />
               <InsightList title="Rewrite plan" icon={RefreshCw} items={result.plan} />
-              <InsightList title="Reviewer bot checks" icon={ShieldCheck} items={result.reviewer?.checks || []} />
+              <InsightList title="Formatting review" icon={ShieldCheck} items={result.formattingReview?.checks || result.reviewer?.checks || []} />
 
               {result.bots && (
                 <div className="bot-timeline">
@@ -444,7 +445,7 @@ function App() {
 
               <div className="resume-preview">
                 <div className="preview-head">
-                  <h3>Refined resume draft</h3>
+                  <h3>Reviewed primary resume</h3>
                   <div className="download-actions">
                     <button type="button" onClick={() => void downloadPdf()}>
                       <Download size={16} />
@@ -462,6 +463,33 @@ function App() {
                 </div>
                 <pre>{result.refinedResume}</pre>
               </div>
+
+              {result.variations?.length >= 2 && (
+                <details className="job-extract">
+                  <summary>Other resume variations</summary>
+                  {result.variations.filter((variation) => variation.id !== 'primary').map((variation) => (
+                    <article className="variation-preview" key={variation.id}>
+                      <div className="preview-head">
+                        <div>
+                          <h3>{variation.name}</h3>
+                          <p className="hint">{variation.reason}</p>
+                        </div>
+                        <div className="download-actions">
+                          <button type="button" onClick={() => void downloadPdf(variation.resume, variation.id)}>
+                            <Download size={16} />
+                            PDF
+                          </button>
+                          <button type="button" onClick={() => void downloadDocx(variation.resume, variation.id)}>
+                            <Download size={16} />
+                            DOCX
+                          </button>
+                        </div>
+                      </div>
+                      <pre>{variation.resume}</pre>
+                    </article>
+                  ))}
+                </details>
+              )}
             </div>
           )}
         </aside>

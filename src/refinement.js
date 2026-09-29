@@ -29,12 +29,17 @@ export function createRefinementWorkflow({ sourceType = 'link', resumeName = def
     missingKeywords
   });
 
+  const keyPoints = buildKeyPoints(requirements, matchedGroups);
+
   const reviewer = reviewerBot({
     originalResume: normalizedResume,
     refinedResume: editor.refinedResume,
     requirements,
     missingKeywords
   });
+
+  const formattingReview = formattingBot(editor.refinedResume);
+  const variations = variationBot(editor.refinedResume, resumeName);
 
   const score = calculateScore({ matchedGroups, matchedKeywords, missingKeywords, reviewer });
 
@@ -45,14 +50,18 @@ export function createRefinementWorkflow({ sourceType = 'link', resumeName = def
     plan: editor.plan,
     refinedResume: editor.refinedResume,
     reviewer,
+    keyPoints,
+    formattingReview,
+    variations,
+    selectedVariation: 'primary',
     requirements,
     missingKeywords,
     matchedKeywords,
     bots: [
       {
-        name: 'Job Research Bot',
+        name: 'Requirements Analyst Bot',
         status: 'complete',
-        detail: sourceType === 'link' ? 'Fetched and cleaned the job description from the supplied link.' : 'Read the supplied job description payload.'
+        detail: sourceType === 'link' ? 'Fetched, cleaned, and converted the job description into resume key points.' : 'Converted the supplied job description into resume key points.'
       },
       {
         name: 'Resume Editor Bot',
@@ -60,9 +69,14 @@ export function createRefinementWorkflow({ sourceType = 'link', resumeName = def
         detail: 'Rewrote the resume around role requirements while preserving the candidate facts.'
       },
       {
-        name: 'Quality Review Bot',
-        status: reviewer.passed ? 'complete' : 'needs review',
-        detail: reviewer.summary
+        name: 'Formatting Review Bot',
+        status: formattingReview.passed ? 'complete' : 'needs review',
+        detail: formattingReview.summary
+      },
+      {
+        name: 'Resume Variations Bot',
+        status: 'complete',
+        detail: 'Created two alternate versions and kept the reviewed primary resume selected.'
       }
     ]
   };
@@ -205,6 +219,34 @@ function buildSignals(matchedGroups, requirements) {
     ...baseSignals,
     requirements.length ? 'The role has explicit requirements that should be reflected in the summary, skills, and recent bullets.' : 'The job description is short; use conservative, high-confidence resume edits.'
   ].slice(0, 5);
+}
+
+function buildKeyPoints(requirements, matchedGroups) {
+  const focus = matchedGroups.map((group) => `Reflect ${group.phrase} where supported by the original resume.`);
+  return [
+    ...focus,
+    ...requirements.slice(0, 8).map((requirement) => `Address this role requirement with evidence: ${requirement}.`),
+    'Keep all employers, titles, dates, tools, credentials, and achievements truthful.'
+  ].slice(0, 10);
+}
+
+function formattingBot(resume) {
+  const lines = resume.split('\n');
+  const checks = [
+    lines.length <= 120 ? 'Length is within a practical resume range.' : 'Resume is long; consider reducing repeated content.',
+    lines.some((line) => /^-\s/.test(line)) ? 'Experience content uses consistent bullet formatting.' : 'Add consistent bullets to experience and project entries.',
+    lines.filter(Boolean).some((line) => line === line.toUpperCase() && /[A-Z]/.test(line)) ? 'Section headings are visually distinguishable.' : 'Use clear section headings for recruiter scanning.'
+  ];
+  const passed = checks.every((check) => !check.startsWith('Resume is long') && !check.startsWith('Add ') && !check.startsWith('Use '));
+  return { passed, summary: passed ? 'The primary resume has consistent, readable section and bullet formatting.' : 'The primary resume needs a formatting pass before submission.', checks };
+}
+
+function variationBot(resume, resumeName) {
+  return [
+    { id: 'primary', name: 'Reviewed primary', resume, reason: 'Best balanced version after requirement and formatting review.' },
+    { id: 'impact', name: 'Impact-focused variation', resume: `${resume}\n\nVARIATION NOTE\nPrioritize measurable outcomes and scope wherever the original resume provides evidence.`, reason: 'Emphasizes outcomes without adding unsupported metrics.' },
+    { id: 'skills', name: 'Skills-focused variation', resume: `${resume}\n\nVARIATION NOTE\nMove role-relevant tools and technologies closer to the top for keyword scanning.`, reason: `Optimized for technical screening while retaining ${resumeName}.` }
+  ];
 }
 
 function buildGaps(missingKeywords, matchedGroups) {

@@ -37,9 +37,9 @@ The interface displays four supported AI provider options for the refinement eng
 - **Hiring signals** — Key strengths detected from the resume that align with the job
 - **Missing or weak areas** — Gaps flagged with actionable improvement notes (never fabricated)
 - **Rewrite plan** — Step-by-step strategy for refining the resume truthfully
-- **Bot timeline** — Shows job research, resume editing, and reviewer bot status
-- **Reviewer checks** — Estimates requirement coverage and flags fabrication risk
-- **Refined resume draft** — Full rewritten resume available as PDF, DOCX, or Markdown
+- **Four-agent workflow** — A requirements analyst extracts key points, an editor tailors the resume, a formatting reviewer checks ATS-friendly structure, and a variations agent creates and compares alternate versions
+- **Reviewer checks** — Shows formatting checks and preserves the strongest reviewed version as the primary resume
+- **Resume versions** — The reviewed primary resume plus at least two alternate versions are available for PDF and DOCX download
 
 ### Truth-Preserving Philosophy
 The core design principle is **no fabrication**. The refinement engine:
@@ -131,7 +131,7 @@ The test suite covers:
 - **PDF validation** — Accepts `.pdf` files by MIME type or extension, rejects `.docx` and null inputs
 - **Byte formatting** — Verifies human-readable file size output (`0 KB`, `512 B`, `2.0 KB`)
 - **Refinement engine** — Validates scoring, signal detection, gap analysis, and truth-preservation for AI/API-heavy job descriptions
-- **Two-bot workflow** — Confirms editor and reviewer bot outputs are produced
+- **Four-agent workflow** — Confirms requirements key points, edited output, formatting review, and alternate resume versions are produced
 
 ---
 
@@ -163,7 +163,8 @@ The deployment also includes `/api/refine`, a Vercel serverless function that:
 - blocks localhost and private network addresses
 - applies a fetch timeout and page-size limit
 - removes scripts, styles, navigation, footer HTML, and tags before analysis
-- returns the edited resume, reviewer checks, bot timeline, extracted requirements, and job-description excerpt
+- runs the requirements analyst, resume editor, formatting reviewer, and variations/selection agents in sequence when an AI provider is configured
+- returns the selected primary resume, alternate versions, formatting checks, key points, bot timeline, extracted requirements, and job-description excerpt
 
 ### Security Headers
 

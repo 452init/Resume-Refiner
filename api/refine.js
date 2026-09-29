@@ -56,38 +56,58 @@ function hasAiProvider() {
 }
 
 async function runAiWorkflow({ sourceType, resumeName, jobText, resumeText }) {
-  const editor = await callAiBot({
-    system: `You are the Resume Editor Bot. Tailor a resume to a job description without inventing facts. Preserve employers, titles, dates, tools, education, and achievements unless they already appear in the resume. You may reorder, clarify, and rewrite wording, but unsupported requirements must be listed as gaps. Return only valid JSON with keys: refinedResume (string), signals (string[]), gaps (string[]), plan (string[]).`,
-    prompt: `Resume:\n${resumeText}\n\nJob description:\n${jobText}`
+  const analyst = await callAiBot({
+    system: `You are the Job Requirements Analyst Bot. Read the job description and produce a precise tailoring brief for the resume editor. Extract the most important responsibilities, required skills, preferred skills, keywords, seniority signals, and formatting expectations. Never infer requirements that are not supported by the job description. Return only valid JSON with keys: keyPoints (string[]), requirements (string[]), priorities (string[]), formattingExpectations (string[]).`,
+    prompt: `Job description:\n${jobText}`
   });
-  const review = await callAiBot({
-    system: `You are the Quality Review Bot for a resume editor. Compare the original resume, edited resume, and job description. Check requirement coverage and detect unsupported claims. Return only valid JSON with keys: passed (boolean), coverage (number from 0 to 100), summary (string), checks (string[]). Fail the review if the edited resume adds a specific employer, title, date, credential, tool, metric, or achievement that is not supported by the original.`,
-    prompt: `Original resume:\n${resumeText}\n\nEdited resume:\n${editor.refinedResume}\n\nJob description:\n${jobText}`
+  const editor = await callAiBot({
+    system: `You are the Resume Editor Bot. Use the requirements analyst brief to tailor the resume. Preserve employers, titles, dates, tools, education, and achievements unless they already appear in the original resume. You may reorder, clarify, and rewrite wording, but unsupported requirements must be listed as gaps. Return only valid JSON with keys: refinedResume (string), signals (string[]), gaps (string[]), plan (string[]).`,
+    prompt: `Original resume:\n${resumeText}\n\nJob description:\n${jobText}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}`
+  });
+  const formattingReview = await callAiBot({
+    system: `You are the Resume Formatting Review Bot. Check the edited resume against the analyst's formatting expectations and professional resume standards: hierarchy, headings, bullets, consistency, scanability, length, and ATS-friendly plain text. Do not add candidate facts. Return only valid JSON with keys: passed (boolean), summary (string), checks (string[]), formattedResume (string). formattedResume must contain the same factual content with formatting fixes only.`,
+    prompt: `Original resume:\n${resumeText}\n\nEdited resume:\n${editor.refinedResume}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}`
+  });
+  const variationsReview = await callAiBot({
+    system: `You are the Resume Variations and Selection Bot. Using the formatted primary resume and the analyst brief, create at least two genuinely different variations of the same resume: one optimized for impact and one optimized for ATS/skills scanning. Never invent facts. Compare the formatted primary and both variations, then select the strongest version as selectedResume. The selected version must already reflect the analyst brief and formatting review. Return only valid JSON with keys: variations (array of objects with id, name, resume, reason), selectedResume (string), selectedVariation (string), selectionReason (string). Include at least two variation objects; do not omit the primary from your comparison.`,
+    prompt: `Original resume:\n${resumeText}\n\nFormatted primary resume:\n${formattingReview.formattedResume || editor.refinedResume}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}\n\nFormatting review:\n${JSON.stringify(formattingReview)}`
   });
 
-  const requirements = extractRequirementsForAi(jobText);
+  const requirements = cleanStringArray(analyst.requirements).length ? cleanStringArray(analyst.requirements) : extractRequirementsForAi(jobText);
+  const keyPoints = cleanStringArray(analyst.keyPoints).length ? cleanStringArray(analyst.keyPoints) : requirements;
   const missingKeywords = requirements.filter((requirement) => !resumeText.toLowerCase().includes(requirement.toLowerCase())).slice(0, 8);
-  const score = Math.max(35, Math.min(94, Math.round((Number(review.coverage) || 0) * 0.8 + (review.passed ? 14 : 4))));
+  const variations = Array.isArray(variationsReview.variations) ? variationsReview.variations.map((variation) => ({
+    id: String(variation.id || 'variation'),
+    name: String(variation.name || 'Resume variation'),
+    resume: String(variation.resume || '').trim(),
+    reason: String(variation.reason || 'Alternative positioning of the same verified experience.')
+  })).filter((variation) => variation.resume).slice(0, 4) : [];
+  const selectedResume = String(variationsReview.selectedResume || formattingReview.formattedResume || editor.refinedResume).trim();
+  const formatting = {
+    passed: Boolean(formattingReview.passed),
+    summary: String(formattingReview.summary || 'Formatting review completed.'),
+    checks: cleanStringArray(formattingReview.checks)
+  };
 
   return {
-    score,
+    score: Math.max(35, Math.min(94, 70 + (formatting.passed ? 10 : 0))),
     signals: cleanStringArray(editor.signals),
     gaps: cleanStringArray(editor.gaps),
     plan: cleanStringArray(editor.plan),
-    refinedResume: String(editor.refinedResume || resumeText).trim(),
-    reviewer: {
-      passed: Boolean(review.passed),
-      coverage: Math.max(0, Math.min(100, Number(review.coverage) || 0)),
-      summary: String(review.summary || 'The edited resume was reviewed for requirement coverage and unsupported claims.'),
-      checks: cleanStringArray(review.checks)
-    },
+    refinedResume: selectedResume,
+    reviewer: formatting,
+    keyPoints,
+    formattingReview: formatting,
+    variations,
+    selectedVariation: String(variationsReview.selectedVariation || 'primary'),
     requirements,
     missingKeywords,
     matchedKeywords: [],
     bots: [
-      { name: 'Job Research Bot', status: 'complete', detail: `Fetched and cleaned the ${sourceType === 'link' ? 'job description link' : 'job description text'}.` },
+      { name: 'Requirements Analyst Bot', status: 'complete', detail: `Extracted the role's key points from the ${sourceType === 'link' ? 'job description link' : 'job description text'}.` },
       { name: 'Resume Editor Bot', status: 'complete', detail: `Tailored ${resumeName} with the configured AI provider while preserving candidate facts.` },
-      { name: 'Quality Review Bot', status: review.passed ? 'complete' : 'needs review', detail: String(review.summary || 'The edited resume was checked for coverage and unsupported claims.') }
+      { name: 'Formatting Review Bot', status: formatting.passed ? 'complete' : 'needs review', detail: formatting.summary },
+      { name: 'Resume Variations Bot', status: variations.length >= 2 ? 'complete' : 'needs review', detail: String(variationsReview.selectionReason || 'Generated alternate versions and selected the strongest reviewed resume.') }
     ],
     aiProvider: aiProviderName()
   };

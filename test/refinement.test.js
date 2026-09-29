@@ -45,7 +45,10 @@ test('extracts role requirements and returns editor and reviewer bot outputs', (
   });
 
   assert.ok(requirements.length >= 2);
-  assert.equal(result.bots.length, 3);
+  assert.equal(result.bots.length, 4);
+  assert.ok(result.keyPoints.length >= 2);
+  assert.equal(result.variations.length, 3);
+  assert.equal(result.selectedVariation, 'primary');
   assert.equal(result.reviewer.passed, true);
   assert.match(result.refinedResume, /Job URL: https:\/\/example\.com\/job/);
   assert.ok(result.reviewer.checks.some((check) => check.includes('Requirement coverage estimate')));
