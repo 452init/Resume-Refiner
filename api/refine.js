@@ -70,19 +70,23 @@ function hasAiProvider() {
 
 async function runAiWorkflow({ sourceType, resumeName, jobText, resumeText }) {
   const analyst = await callAiBot({
+    agent: 'analyst',
     system: `You are the Job Requirements Analyst Bot. Read the job description and produce a precise tailoring brief for the resume editor. Extract the most important responsibilities, required skills, preferred skills, keywords, seniority signals, and formatting expectations. Never infer requirements that are not supported by the job description. Return only valid JSON with keys: keyPoints (string[]), requirements (string[]), priorities (string[]), formattingExpectations (string[]).`,
     prompt: `Job description:\n${jobText}`
   });
   const editor = await callAiBot({
+    agent: 'editor',
     system: `You are the Resume Editor Bot and a senior professional resume writer. Use the requirements analyst brief to tailor the resume. Produce a complete, submission-ready resume, not commentary or a plan. Preserve employers, titles, dates, tools, education, and achievements unless they already appear in the original resume. You may reorder, clarify, and rewrite wording, but never invent facts, metrics, credentials, or experience. Use this exact plain-text structure where the source supports it: candidate name, contact line, PROFESSIONAL SUMMARY, EXPERIENCE, PROJECTS, EDUCATION, CERTIFICATIONS, and SKILLS. Use concise achievement bullets beginning with '- ', consistent tense, strong verbs, and ATS-readable section headings. Remove internal notes, role coverage lists, disclaimers, and meta commentary from the resume. Return only valid JSON with keys: refinedResume (string), signals (string[]), gaps (string[]), plan (string[]).`,
     prompt: `Original resume:\n${resumeText}\n\nJob description:\n${jobText}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}`
   });
   const editorDraft = formatResumeText(editor.refinedResume);
   const formattingReview = await callAiBot({
+    agent: 'formatter',
     system: `You are the Resume Formatting Review Bot and a meticulous ATS resume production specialist. Review the edited resume for professional hierarchy, readable whitespace, section order, bullet consistency, tense consistency, line length, scanability, and ATS-safe plain text. Return a complete corrected resume in formattedResume, not just advice. Do not add, remove, or change candidate facts. Remove all internal bot notes, requirement coverage sections, variation notes, disclaimers, and meta commentary. Keep the resume to approximately two pages of focused content, use a clear name/contact header, standard uppercase section headings, and concise '-' bullets. Return only valid JSON with keys: passed (boolean), summary (string), checks (string[]), formattedResume (string).`,
     prompt: `Original resume:\n${resumeText}\n\nEdited resume:\n${editorDraft}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}`
   });
   const variationsReview = await callAiBot({
+    agent: 'variations',
     system: `You are the Resume Variations and Selection Bot. Using the formatted primary resume and the analyst brief, create at least two genuinely different variations of the same resume: one optimized for impact and one optimized for ATS/skills scanning. Never invent facts. Compare the formatted primary and both variations, then select the strongest version as selectedResume. The selected version must already reflect the analyst brief and formatting review. Return only valid JSON with keys: variations (array of objects with id, name, resume, reason), selectedResume (string), selectedVariation (string), selectionReason (string). Include at least two variation objects; do not omit the primary from your comparison.`,
     prompt: `Original resume:\n${resumeText}\n\nFormatted primary resume:\n${formatResumeText(formattingReview.formattedResume || editorDraft)}\n\nRequirements analyst brief:\n${JSON.stringify(analyst)}\n\nFormatting review:\n${JSON.stringify(formattingReview)}`
   });
@@ -150,19 +154,19 @@ function aiProviderName() {
   return 'OpenAI-compatible provider';
 }
 
-async function callAiBot({ system, prompt }) {
+async function callAiBot({ agent, system, prompt }) {
   const requestedProvider = (process.env.AI_PROVIDER || '').toLowerCase();
   const provider = requestedProvider === 'openai' && process.env.OPENAI_API_KEY
-    ? { url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions', key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || 'gpt-4o-mini' }
+    ? { url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions', key: process.env.OPENAI_API_KEY, model: modelForAgent(agent, process.env.OPENAI_MODEL || 'gpt-4o-mini') }
     : requestedProvider === 'groq' && process.env.GROQ_API_KEY
-      ? { url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile' }
+      ? { url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: modelForAgent(agent, process.env.GROQ_MODEL || 'llama-3.3-70b-versatile') }
       : requestedProvider === 'mistral' && process.env.MISTRAL_API_KEY
-        ? { url: 'https://api.mistral.ai/v1/chat/completions', key: process.env.MISTRAL_API_KEY, model: process.env.MISTRAL_MODEL || 'mistral-small-latest' }
+        ? { url: 'https://api.mistral.ai/v1/chat/completions', key: process.env.MISTRAL_API_KEY, model: modelForAgent(agent, process.env.MISTRAL_MODEL || 'mistral-small-latest') }
         : process.env.MISTRAL_API_KEY
-    ? { url: 'https://api.mistral.ai/v1/chat/completions', key: process.env.MISTRAL_API_KEY, model: process.env.MISTRAL_MODEL || 'mistral-small-latest' }
+    ? { url: 'https://api.mistral.ai/v1/chat/completions', key: process.env.MISTRAL_API_KEY, model: modelForAgent(agent, process.env.MISTRAL_MODEL || 'mistral-small-latest') }
     : process.env.GROQ_API_KEY
-      ? { url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile' }
-      : { url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions', key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || 'gpt-4o-mini' };
+      ? { url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: modelForAgent(agent, process.env.GROQ_MODEL || 'llama-3.3-70b-versatile') }
+      : { url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions', key: process.env.OPENAI_API_KEY, model: modelForAgent(agent, process.env.OPENAI_MODEL || 'gpt-4o-mini') };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
@@ -173,7 +177,6 @@ async function callAiBot({ system, prompt }) {
         headers: { authorization: `Bearer ${provider.key}`, 'content-type': 'application/json' },
         body: JSON.stringify({
           model: provider.model,
-          temperature: 0.2,
           response_format: { type: 'json_object' },
           messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }]
         }),
@@ -203,6 +206,11 @@ async function callAiBot({ system, prompt }) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function modelForAgent(agent, fallback) {
+  const configured = process.env[`AI_${agent.toUpperCase()}_MODEL`];
+  return configured || process.env.AI_MODEL || fallback;
 }
 
 async function waitForRateLimit(retryAfter, attempt) {

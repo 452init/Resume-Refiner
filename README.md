@@ -189,17 +189,36 @@ The following keys can be configured as **server-side environment variables** on
 
 | Variable | Purpose |
 |----------|---------|
-| `AI_PROVIDER` | Select `mistral`, `groq`, or `openai` when multiple provider keys are configured |
-| `MISTRAL_API_KEY` | Mistral AI provider authentication |
-| `GROQ_API_KEY` | Groq AI provider authentication |
-| `HUGGINGFACE_API_KEY` | Hugging Face Inference API authentication |
-| `OPENAI_API_KEY` | OpenAI-compatible provider authentication |
+| `AI_PROVIDER` | Select `mistral`, `groq`, or `openai` |
+| `AI_MODEL` | Default model used by all agents unless an agent-specific model is set |
+| `AI_ANALYST_MODEL` | Model for job requirements analysis and research synthesis |
+| `AI_EDITOR_MODEL` | Model for evidence-preserving resume rewriting |
+| `AI_FORMATTER_MODEL` | Model for ATS and formatting review |
+| `AI_VARIATIONS_MODEL` | Model for alternate resume generation and selection |
+| `MISTRAL_API_KEY` | The recommended single provider key for this application |
+| `GROQ_API_KEY` | Optional Groq provider key |
+| `OPENAI_API_KEY` | Optional OpenAI-compatible provider key |
 | `OPENAI_BASE_URL` | Optional OpenAI-compatible chat completions URL |
 | `OPENAI_MODEL` | Optional OpenAI-compatible model name |
 | `MISTRAL_MODEL` | Optional Mistral model name |
 | `GROQ_MODEL` | Optional Groq model name |
 
-When configured, the server runs the Requirements Analyst, Resume Editor, Formatting Review, and Resume Variations agents in sequence. Provider rate limits are retried briefly; if the provider remains unavailable, the app returns a polished local fallback instead of failing the request. API keys are never sent to the browser.
+### Recommended setup
+
+You only need one API key. For the best fit with this workflow, use Mistral and configure the model IDs currently available in your Mistral account. Mistral's current lineup describes Small 4 as a hybrid instruct/reasoning model and Medium 3.5 as a stronger agentic/coding model. Use the stronger model for the analyst and formatter, and the efficient model for the editor and variations:
+
+```env
+AI_PROVIDER=mistral
+MISTRAL_API_KEY=your_mistral_key
+AI_ANALYST_MODEL=mistral-medium-latest
+AI_EDITOR_MODEL=mistral-small-latest
+AI_FORMATTER_MODEL=mistral-medium-latest
+AI_VARIATIONS_MODEL=mistral-small-latest
+```
+
+The exact model aliases can change, so select the current IDs shown in your provider dashboard. Do not add `HUGGINGFACE_API_KEY`: Hugging Face is displayed in the UI but is not implemented as an API backend. Groq is fast but is not a research/search agent; OpenAI-compatible providers can be used if you configure a model that supports JSON structured output through the chat completions endpoint.
+
+The application itself performs job-page research by fetching and cleaning the supplied public URL. The analyst model then reasons over that extracted content. The four agents receive each other's outputs in sequence; they are not independent one-shot calls. Provider rate limits are retried briefly, and a polished local fallback is returned if the provider remains unavailable. API keys are never sent to the browser.
 
 ---
 
