@@ -41,10 +41,11 @@ export function downloadResumePdf(text, filename = 'refined-resume') {
     });
   });
 
-  doc.save(`${filename}.pdf`);
+  saveBlob(doc.output('blob'), `${filename}.pdf`);
 }
 
 export async function downloadResumeDocx(text, filename = 'refined-resume') {
+  const anchor = createDownloadAnchor(`${filename}.docx`);
   const lines = formatResumeText(text).split('\n');
   const children = lines.map((line, index) => {
     const isHeading = isResumeHeading(line, index, lines);
@@ -75,7 +76,7 @@ export async function downloadResumeDocx(text, filename = 'refined-resume') {
   });
 
   const blob = await Packer.toBlob(document);
-  saveBlob(blob, `${filename}.docx`);
+  triggerBlobDownload(blob, anchor);
 }
 
 function isResumeHeading(line, index, lines) {
@@ -86,12 +87,21 @@ function isResumeHeading(line, index, lines) {
 }
 
 function saveBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
+  const anchor = createDownloadAnchor(filename);
+  triggerBlobDownload(blob, anchor);
+}
+
+function createDownloadAnchor(filename) {
   const anchor = document.createElement('a');
-  anchor.href = url;
   anchor.download = filename;
   anchor.style.display = 'none';
   document.body.appendChild(anchor);
+  return anchor;
+}
+
+function triggerBlobDownload(blob, anchor) {
+  const url = URL.createObjectURL(blob);
+  anchor.href = url;
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);

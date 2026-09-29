@@ -175,6 +175,18 @@ h3 {
   padding: 10px;
 }
 
+.notice {
+  align-items: center;
+  background: #fff8df;
+  border: 1px solid #ead38a;
+  border-radius: 8px;
+  color: #765c16;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px;
+}
+
 .field-label {
   color: #33413f;
   display: block;
