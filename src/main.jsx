@@ -415,6 +415,7 @@ function App() {
               </div>
 
               <p className="hint">{result.aiProvider ? `${result.aiProvider} editor and reviewer completed this pass.` : 'Local editor and reviewer completed this pass.'}</p>
+              {result.rateLimitNotice && <div className="error"><AlertCircle size={16} />{result.rateLimitNotice}</div>}
 
               <InsightList title="Requirements key points" icon={ClipboardList} items={result.keyPoints || result.requirements || []} />
               <InsightList title="Hiring signals" icon={BadgeCheck} items={result.signals} />

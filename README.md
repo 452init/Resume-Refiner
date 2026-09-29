@@ -189,6 +189,7 @@ The following keys can be configured as **server-side environment variables** on
 
 | Variable | Purpose |
 |----------|---------|
+| `AI_PROVIDER` | Select `mistral`, `groq`, or `openai` when multiple provider keys are configured |
 | `MISTRAL_API_KEY` | Mistral AI provider authentication |
 | `GROQ_API_KEY` | Groq AI provider authentication |
 | `HUGGINGFACE_API_KEY` | Hugging Face Inference API authentication |
@@ -198,7 +199,7 @@ The following keys can be configured as **server-side environment variables** on
 | `MISTRAL_MODEL` | Optional Mistral model name |
 | `GROQ_MODEL` | Optional Groq model name |
 
-When configured, the server runs the Job Research Bot, an AI Resume Editor Bot, and a separate Quality Review Bot in sequence. The reviewer checks requirement coverage and unsupported claims before the result is returned. API keys are never sent to the browser.
+When configured, the server runs the Requirements Analyst, Resume Editor, Formatting Review, and Resume Variations agents in sequence. Provider rate limits are retried briefly; if the provider remains unavailable, the app returns a polished local fallback instead of failing the request. API keys are never sent to the browser.
 
 ---
 

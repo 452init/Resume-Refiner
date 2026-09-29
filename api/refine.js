@@ -5,6 +5,7 @@ import { createRefinementWorkflow, formatResumeText, normalizeText } from '../sr
 const maxBodySize = 150_000;
 const maxFetchedBytes = 1_200_000;
 const fetchTimeoutMs = 10_000;
+const maxAiAttempts = 3;
 
 export default async function handler(request, response) {
   setSecurityHeaders(response);
@@ -37,7 +38,19 @@ export default async function handler(request, response) {
       jobText: source.text,
       resumeText
     };
-    const result = hasAiProvider() ? await runAiWorkflow(workflowInput) : createRefinementWorkflow(workflowInput);
+    let result;
+    if (!hasAiProvider()) {
+      result = createRefinementWorkflow(workflowInput);
+    } else {
+      try {
+        result = await runAiWorkflow(workflowInput);
+      } catch (error) {
+        if (error.statusCode !== 429) throw error;
+        result = createRefinementWorkflow(workflowInput);
+        result.aiProvider = 'Local fallback';
+        result.rateLimitNotice = 'The configured AI provider was rate-limited, so a local truth-preserving refinement was returned. Check the provider quota or rate limits before retrying the hosted AI workflow.';
+      }
+    }
 
     return response.status(200).json({
       ...result,
@@ -128,13 +141,24 @@ function cleanStringArray(value) {
 }
 
 function aiProviderName() {
+  const provider = (process.env.AI_PROVIDER || '').toLowerCase();
+  if (provider === 'mistral' && process.env.MISTRAL_API_KEY) return 'Mistral';
+  if (provider === 'groq' && process.env.GROQ_API_KEY) return 'Groq';
+  if (provider === 'openai' && process.env.OPENAI_API_KEY) return 'OpenAI-compatible provider';
   if (process.env.MISTRAL_API_KEY) return 'Mistral';
   if (process.env.GROQ_API_KEY) return 'Groq';
   return 'OpenAI-compatible provider';
 }
 
 async function callAiBot({ system, prompt }) {
-  const provider = process.env.MISTRAL_API_KEY
+  const requestedProvider = (process.env.AI_PROVIDER || '').toLowerCase();
+  const provider = requestedProvider === 'openai' && process.env.OPENAI_API_KEY
+    ? { url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions', key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || 'gpt-4o-mini' }
+    : requestedProvider === 'groq' && process.env.GROQ_API_KEY
+      ? { url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile' }
+      : requestedProvider === 'mistral' && process.env.MISTRAL_API_KEY
+        ? { url: 'https://api.mistral.ai/v1/chat/completions', key: process.env.MISTRAL_API_KEY, model: process.env.MISTRAL_MODEL || 'mistral-small-latest' }
+        : process.env.MISTRAL_API_KEY
     ? { url: 'https://api.mistral.ai/v1/chat/completions', key: process.env.MISTRAL_API_KEY, model: process.env.MISTRAL_MODEL || 'mistral-small-latest' }
     : process.env.GROQ_API_KEY
       ? { url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile' }
@@ -143,25 +167,35 @@ async function callAiBot({ system, prompt }) {
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const result = await fetch(provider.url, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${provider.key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: provider.model,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }]
-      }),
-      signal: controller.signal
-    });
-    if (!result.ok) throw httpError(502, `AI provider returned HTTP ${result.status}.`);
-    const payload = await result.json();
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) throw httpError(502, 'AI provider returned an empty response.');
-    try {
-      return JSON.parse(content);
-    } catch {
-      throw httpError(502, 'AI provider returned invalid JSON.');
+    for (let attempt = 1; attempt <= maxAiAttempts; attempt += 1) {
+      const result = await fetch(provider.url, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${provider.key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: provider.model,
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }]
+        }),
+        signal: controller.signal
+      });
+
+      if (result.status === 429) {
+        if (attempt === maxAiAttempts) {
+          throw httpError(429, `${aiProviderName()} is rate-limited or its quota is exhausted. Retry later or check the provider account and model limits.`);
+        }
+        await waitForRateLimit(result.headers.get('retry-after'), attempt);
+        continue;
+      }
+      if (!result.ok) throw httpError(502, `AI provider returned HTTP ${result.status}.`);
+      const payload = await result.json();
+      const content = payload.choices?.[0]?.message?.content;
+      if (!content) throw httpError(502, 'AI provider returned an empty response.');
+      try {
+        return JSON.parse(content);
+      } catch {
+        throw httpError(502, 'AI provider returned invalid JSON.');
+      }
     }
   } catch (error) {
     if (error.name === 'AbortError') throw httpError(504, 'AI provider request timed out.');
@@ -169,6 +203,14 @@ async function callAiBot({ system, prompt }) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function waitForRateLimit(retryAfter, attempt) {
+  const parsed = Number(retryAfter);
+  const delay = Number.isFinite(parsed) && parsed >= 0
+    ? Math.min(parsed * 1000, 4_000)
+    : Math.min(500 * (2 ** (attempt - 1)), 4_000);
+  await new Promise((resolve) => setTimeout(resolve, delay));
 }
 
 async function readJsonBody(request) {
